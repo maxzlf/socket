@@ -1,109 +1,86 @@
-#include <stdio.h>
-#include <assert.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
+#include "../utils/sys.h"
+#include "../utils/type.h"
+#include "../utils/error.h"
+#include "../utils/const.h"
+#include "../utils/utils.h"
+#include "util.h"
 
-#include "../type.h"
-#include "../common.h"
-
-static int InitServer()
+static long listenfd()
 {
-	int iListenFd = -1;
-	int iConnectFd = -1;
-	int iErr = -1;
-	int iLen = 0;
-	struct sockaddr_in stAddr;
+	int ilistenfd;
+	struct sockaddr_in staddr;
 
-	iListenFd = socket(AF_INET, SOCK_STREAM, 0);
-	if (0 > iListenFd)
+	if ((ilistenfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
 	{
-		return iListenFd;
+		LOG_ERROR("failed create socket : %s", strerror(errno));
+		return FAILED;
+	}
+	LOG_DEBUG("succeed create listen fd %d", ilistenfd);
+
+	memset(&staddr, 0, sizeof(staddr));
+	staddr.sin_family = AF_INET;
+	staddr.sin_port = htons(SERVER_PORT);
+	staddr.sin_addr.s_addr = htonl(INADDR_ANY);
+
+	if (0 != bind(ilistenfd, (struct sockaddr *)&staddr, sizeof(staddr)))
+	{
+		LOG_ERROR("failed bind listenfd with port : %s", strerror(errno));
+		close(ilistenfd);
+		return FAILED;
 	}
 
-	memset(&stAddr, 0, sizeof(stAddr));
-	stAddr.sin_family = AF_INET;
-	stAddr.sin_port = htons(2048);
-	stAddr.sin_addr.s_addr = htonl(INADDR_ANY);
-
-	iErr = bind(iListenFd, (struct sockaddr *)&stAddr, sizeof(stAddr));
-	if (0 != iErr)
+	if (0 != listen(ilistenfd, SOMAXCONN))
 	{
-		close(iListenFd);
-		return -1;
+		LOG_ERROR("failed listen listenfd %d : %s", ilistenfd, strerror(errno));
+		close(ilistenfd);
+		return FAILED;
 	}
 
-	iErr = listen(iListenFd, SOMAXCONN);
-	if (0 != iErr)
-	{
-		close(iListenFd);
-		return -1;
-	}
-
-	iLen = sizeof(stAddr);
-	iConnectFd = accept(iListenFd, (struct sockaddr *)&stAddr, &iLen);
-	if (-1 == iConnectFd)
-	{
-		close(iListenFd);
-		return -1;
-	}
-
-	close(iListenFd);
-	return iConnectFd;
+	LOG_DEBUG("succeed listen listenfd %d", ilistenfd);
+	return ilistenfd;
 }
 
-static void Chat(IN int iSocket)
+static void echo(int isockfd)
 {
-	char acBuf[BUFLEN];
-	char acSendBuf[BUFLEN];
-	int iErr = -1;
-	char *pc = NULL;
+	assert(isockfd >= 0);
 
-	assert(-1 != iSocket);
-
-	memset(acBuf, 0, sizeof(acBuf));
-	pc = acBuf;
-	iErr = recv(iSocket, pc, sizeof(acBuf), 0);
-	if (-1 == iErr)
+	char buf[BUFLEN] = {'\0'};
+	long revlen;
+	if ((revlen = readn(isockfd, buf, sizeof(buf))) >= 0)
 	{
-		return;
-	}
-
-	printf("client:%s\n", acBuf);
-
-	memset(acSendBuf, 0, sizeof(acSendBuf));
-	snprintf(acSendBuf, sizeof(acSendBuf), "echo");
-	strncat(acSendBuf, acBuf, sizeof(acSendBuf));
-	iErr = send(iSocket, acSendBuf, strlen(acSendBuf), 0);
-	if (-1 == iErr)
+		LOG_DEBUG("succedd read data : %s", buf);
+		if (writen(isockfd, buf, revlen) < 0)
+		{
+			LOG_ERROR("failed response data : %s", buf);
+		} else
+		{
+			LOG_DEBUG("succedd response data : %s", buf);
+		}
+	} else
 	{
-		printf("Failed to answer message\n");
-		return;
+		LOG_ERROR("failed read data");
 	}
-
-	return;
 }
 
 int main(int argc, char *argv[])
 {
-	int iConnectFd = -1;
+	long ilistenfd, iconnectfd;
+	if ((ilistenfd = listenfd()) < 0) return 0;
 
-	iConnectFd = InitServer();
-	if (-1 == iConnectFd)
+	for (;;)
 	{
-		printf("Failed to connect\n");
-		return 0;
+		struct sockaddr_in staddr;
+		socklen_t stlen = sizeof(staddr);
+		memset(&staddr, 0, stlen);
+		if ((iconnectfd = accept(ilistenfd, (struct sockaddr*)&staddr, &stlen)) < 0)
+		{
+			LOG_ERROR("failed accept connection : %s", strerror(errno));
+			break;
+		}
+		echo(iconnectfd);
+		close(iconnectfd);
 	}
-	printf("Success to connect\n");
-
-	while(1)
-	{
-		Chat(iConnectFd);
-	}
-
-	close(iConnectFd);
+	close(ilistenfd);
 
 	return 0;
 }

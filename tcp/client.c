@@ -1,131 +1,99 @@
-#include <stdio.h>
-#include <assert.h>
-#include <stdlib.h>
-#include <unistd.h>
-#include <string.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
+#include "../utils/sys.h"
+#include "../utils/type.h"
+#include "../utils/error.h"
+#include "../utils/const.h"
+#include "../utils/utils.h"
+#include "util.h"
 
-#include "../type.h"
-#include "../common.h"
-
-static int ConnectRetry(IN int iSocket,
-						IN struct sockaddr *pstAddr,
-						IN socklen_t stLen)
+static long connectRetry(int isockfd, IN const struct sockaddr *apstaddr, long lsize)
 {
-	int iSec = 0;
+	assert(isockfd >= 0);
+	assert(NULL != apstaddr);
+	assert(lsize > 0);
 
-	assert(-1 != iSocket);
-	assert(NULL != pstAddr);
-	assert(stLen > 0);
-
-	for (iSec = 1; iSec <= MAXSLEEP; iSec <<= 1)
+	int iseconds;
+	for (iseconds = 1; iseconds <= MAX_SLEEP; iseconds <<= 1)
 	{
-		if (0 == connect(iSocket, pstAddr, stLen))
+		if (0 == connect(isockfd, apstaddr, lsize))
 		{
-			return 0;
+			LOG_DEBUG("succeed connect fd %d", isockfd);
+			return SUCCESS;
 		}
-		if (iSec <= MAXSLEEP/2)
-		{
-			sleep(iSec);
-		}
+		LOG_DEBUG("failed connect fd %d", isockfd);
+		sleep(iseconds);
 	}
 
-	return -1;
+	return FAILED;
 }
 
-static int InitClient(IN const char *pcInAddr)
+static long sockfd(const char *apcaddr)
 {
-	int iSocket = -1;
-	int iErr = -1;
-	unsigned int uiCount = 0;
-	struct sockaddr_in stServAddr;
+	assert(NULL != apcaddr);
 
-	assert(NULL != pcInAddr);
-
-	iSocket = socket(AF_INET, SOCK_STREAM, 0);
-	if (-1 == iSocket)
+	int isockfd;
+	if ((isockfd = socket(AF_INET, SOCK_STREAM, 0)) < 0)
 	{
-		return -1;
+		LOG_ERROR("failed create socket fd : %s", strerror(errno));
+		return FAILED;
+	}
+	LOG_DEBUG("succeed create socket fd %d", isockfd);
+
+	struct sockaddr_in staddr;
+	memset(&staddr, 0, sizeof(staddr));
+	staddr.sin_family = AF_INET;
+	staddr.sin_port = htons(SERVER_PORT);
+	if (inet_pton(AF_INET, apcaddr, &staddr.sin_addr) <= 0)
+	{
+		LOG_ERROR("failed covert ip address %s : %s",apcaddr, strerror(errno));
+		return FAILED;
 	}
 
-	memset(&stServAddr, 0, sizeof(stServAddr));
-	stServAddr.sin_family = AF_INET;
-	stServAddr.sin_port = htons(2048);
-	iErr = inet_pton(AF_INET, pcInAddr, &stServAddr.sin_addr);
-	if (iErr <= 0)
+	if (SUCCESS != connectRetry(isockfd, (struct sockaddr *)&staddr, sizeof(staddr)))
 	{
-		return -1;
+		LOG_ERROR("failed connect server %s : %s", apcaddr, strerror(errno));
+		close(isockfd);
+		return FAILED;
 	}
+	LOG_DEBUG("client socketdf %d succeed connect to server %s", isockfd, apcaddr);
 
-	while (0 != ConnectRetry(iSocket, (struct sockaddr *)&stServAddr, sizeof(stServAddr)))
-	{
-		uiCount++;
-		printf("Connect retry %d\n", uiCount);
-		sleep(1);
-
-		return iSocket;
-	}
+	return isockfd;
 }
 
-static void Chat(IN int iSocket)
+static void echo(int isockfd, IN const char *apcmsg, long lsize)
 {
-	char acBuf[BUFLEN];
-	int iErr = -1;
-	char *pc = NULL;
+	assert(isockfd >= 0);
+	assert(NULL != apcmsg);
+	assert(lsize > 0);
 
-	assert(-1 != iSocket);
-
-	printf("client:");
-	memset(acBuf, 0, sizeof(acBuf));
-	if (NULL == fgets(acBuf, sizeof(acBuf), stdin))
+	if (writen(isockfd, apcmsg, lsize) < 0)
 	{
-		return;
-	}
-
-	iErr = send(iSocket, acBuf, strlen(acBuf), 0);
-	if (-1 == iErr)
+		LOG_ERROR("failed send data : %s", apcmsg);
+	} else
 	{
-		printf("Failed to send message\n");
-		return;
+		LOG_DEBUG("succeed send data : %s", apcmsg);
+		char buf[BUFLEN] = {'\0'};
+		if (readn(isockfd, buf, sizeof(buf)) >= 0)
+		{
+			LOG_DEBUG("succeed get response : %s", buf);
+		} else
+		{
+			LOG_ERROR("failed get response");
+		}
 	}
-
-	memset(acBuf, 0, sizeof(acBuf));
-	pc = acBuf;
-	iErr = recv(iSocket, pc, sizeof(acBuf), 0);
-	if (-1 == iErr)
-	{
-		return;
-	}
-
-	printf("server:%s\n", acBuf);
-
-	return;
 }
 
 int main(int argc, char *argv[])
 {
-	int iSocket = -1;
-
-	if (2 != argc)
+	if (3 != argc)
 	{
-		printf("usage: client x.x.x.x\n");
+		LOG_ERROR("usage : tcp_client x.x.x.x msg");
 		return 0;
 	}
 
-	iSocket = InitClient(argv[1]);
-	if (-1 == iSocket)
-	{
-		return 0;
-	}
-	printf("connected\n");
-	
-	while (1)
-	{
-		Chat(iSocket);
-	}
-
-	close(iSocket);
+	int isockfd;
+	if ((isockfd = sockfd(argv[1])) < 0) return 0;
+	if (strlen(argv[2]) > 0) echo(isockfd, argv[2], strlen(argv[2]));
+	close(isockfd);
 
 	return 0;
 }
