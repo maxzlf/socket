@@ -11,15 +11,15 @@ gcc -g          \
     tcp/server.c\
     -o tcp_server -Wall
 
-# gcc -g          \
-#     utils/*.c   \
-#     udp/client.c\
-#     -o udp_client -Wall
-#
-# gcc -g          \
-#     utils/*.c   \
-#     udp/server.c\
-#     -o udp_server -Wall
+gcc -g          \
+    utils/*.c   \
+    udp/client.c\
+    -o udp_client -Wall
+
+gcc -g          \
+    utils/*.c   \
+    udp/server.c\
+    -o udp_server -Wall
 #
 # gcc -g          \
 #     utils/*.c   \
