@@ -84,7 +84,4 @@ typedef struct S_NODE
     struct S_NODE *pstnext;
 } snode;
 
-long readn(int isockfd, OUT char *pcdata, long ulsize);
-long writen(int isockfd, IN const char *apcdata, long ulsize);
-
 #endif
