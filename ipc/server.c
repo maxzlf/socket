@@ -7,26 +7,25 @@
 static long sockfd()
 {
 	int isockfd;
-	if ((isockfd = socket(AF_INET, SOCK_DGRAM, 0)) < 0)
+	if ((isockfd = socket(AF_UNIX, SOCK_DGRAM, 0)) < 0)
 	{
 		LOG_ERROR("failed create socket fd: %s", strerror(errno));
 		return FAILED;
 	}
 	LOG_DEBUG("succeed create socket fd : %d", isockfd);
 
-	struct sockaddr_in staddr;
+	struct sockaddr_un staddr;
 	memset(&staddr, 0, sizeof(staddr));
-	staddr.sin_family = AF_INET;
-	staddr.sin_port = htons(SERVER_PORT);
-	staddr.sin_addr.s_addr = htonl(INADDR_ANY);
+	staddr.sun_family = AF_LOCAL;
+	strncpy(staddr.sun_path, UNIX_ADDR, sizeof(staddr.sun_path));
 	if (0 != bind(isockfd, (struct sockaddr *)&staddr, sizeof(staddr)))
 	{
-		LOG_ERROR("failed bind socket fd with port %d: %s",SERVER_PORT, strerror(errno));
+		LOG_ERROR("failed bind socket fd with name %d: %s", UNIX_ADDR, strerror(errno));
 		close(isockfd);
 		return FAILED;
 	}
 
-	LOG_DEBUG("succeed bind socket fd %d with port %d", isockfd, SERVER_PORT);
+	LOG_DEBUG("succeed bind socket fd %d with port %d", isockfd, UNIX_ADDR);
 	return isockfd;
 }
 

@@ -6,5 +6,6 @@
 #define TIMEOUT		(4u)
 
 #define SERVER_PORT (2048u)
+#define UNIX_ADDR   "test_unix_ipc"
 
 #endif

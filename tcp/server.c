@@ -48,13 +48,13 @@ static void echo(int isockfd)
 	long revlen;
 	if ((revlen = readn(isockfd, buf, sizeof(buf))) >= 0)
 	{
-		LOG_DEBUG("succedd read data : %s", buf);
+		LOG_DEBUG("succeed read data : %s", buf);
 		if (writen(isockfd, buf, revlen) < 0)
 		{
 			LOG_ERROR("failed response data : %s", buf);
 		} else
 		{
-			LOG_DEBUG("succedd response data : %s", buf);
+			LOG_DEBUG("succeed response data : %s", buf);
 		}
 	} else
 	{
